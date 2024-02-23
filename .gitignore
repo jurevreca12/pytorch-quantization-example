@@ -1,0 +1,5 @@
+venv/
+*.swp
+mnist_cnn.pt
+mnist_cnn_ptq_i8.pt
+__pycache__/
