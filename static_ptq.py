@@ -8,14 +8,32 @@ class PTSQNet(nn.Module):
     def __init__(self):
         super().__init__()
         self.quant = torch.ao.quantization.QuantStub()
-        self.fp32_model = Net()
-        self.fp32_model.load_state_dict(torch.load('mnist_cnn.pt'))
-        self.fp32_model.eval()
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+        self.relu1 = nn.ReLU()
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.relu2 = nn.ReLU()
+        self.maxpool = nn.MaxPool2d(2)
+        self.dropout1 = nn.Dropout(0.25)
+        self.dropout2 = nn.Dropout(0.5)
+        self.fc1 = nn.Linear(9216, 128)
+        self.relu3 = nn.ReLU()
+        self.fc2 = nn.Linear(128, 10)
+        self.softmax = nn.Softmax(dim=1)
         self.dequant = torch.ao.quantization.DeQuantStub()
 
     def forward(self, x):
         x = self.quant(x)
-        x = self.fp32_model(x)
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.maxpool(x)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = self.relu3(x)
+        x = self.dropout2(x)
+        x = self.fc2(x)
         x = self.dequant(x)
         return x
 
@@ -33,6 +51,7 @@ def main():
     torch.manual_seed(args.seed)
     device = torch.device("cpu")
     model = PTSQNet().to(device)
+    model.load_state_dict(torch.load('mnist_cnn.pt'))
     # model must be set to eval mode for static quantization logic to work
     model.eval()
 
@@ -49,9 +68,9 @@ def main():
     # Fuse the activations to preceding layers, where applicable.
     # This needs to be done manually depending on the model architecture.
     # Common fusions include `conv + relu` and `conv + batchnorm + relu`
-    model_fused = torch.ao.quantization.fuse_modules(model.fp32_model, [['conv1', 'relu1'],
-                                                                        ['conv2', 'relu2'],
-                                                                        ['fc2',   'relu3']])
+    model_fused = torch.ao.quantization.fuse_modules(model, [['conv1', 'relu1'],
+                                                             ['conv2', 'relu2'],
+                                                             ['fc2',   'relu3']])
 
     # Prepare the model for static quantization. This inserts observers in
     # the model that will observe activation tensors during calibration.
@@ -78,6 +97,8 @@ def main():
 
     if args.save_model:
         torch.save(model.state_dict(), "mnist_cnn_ptq_i8.pt")
+        onnx_program = torch.onnx.dynamo_export(model_int8, input_fp32)
+        onnx_program.save("mnist_cnn_ptq_i8.onnx")
 
 
 if __name__ == '__main__':

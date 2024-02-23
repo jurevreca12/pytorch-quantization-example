@@ -13,5 +13,5 @@ mnist_cnn.pt: main.py
 	python main.py --save-model --epochs 5
 
 clean:
-	rm mnist_cnn.pt
-	rm mnist_cnn_ptq_i8.ptq
+	rm -f mnist_cnn.pt
+	rm -f mnist_cnn_ptq_i8.pt
